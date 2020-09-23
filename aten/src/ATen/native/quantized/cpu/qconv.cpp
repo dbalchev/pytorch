@@ -313,8 +313,30 @@ at::Tensor PackedConvWeight<kSpatialDim>::apply_impl(
   const float act_scale = act.q_scale();
   const int32_t act_zero_point = act.q_zero_point();
 
-  at::Tensor bias;
-  const float* bias_data = GetBiasData(&bias);
+  at::Tensor qbias;
+  const int32_t* bias_data;
+  if (bias.has_value()) {
+    if (q_scheme == c10::kPerChannelAffine) {
+      at::Tensor bias_quant_scales = at::from_blob(
+          w_scale.data(), 
+          {w_scale.size()}, 
+          c10::TensorOptions().dtype(c10::kFloat)
+      ) * act_scale;
+      at::Tensor bias_zp = at::zeros(bias_quant_scales.sizes(), c10::kInt);
+      qbias = at::native::quantize_per_channel_cpu(
+          bias.value(), bias_quant_scales, bias_zp, 0, c10::kQInt32);
+    } else {
+      qbias = at::native::quantize_per_tensor(
+          bias.value(),
+          w_scale[0] * act_scale,
+          0,
+          c10::kQInt32);
+    }
+    qbias = qbias.contiguous();
+    bias_data = reinterpret_cast<int32_t*>(qbias.template data_ptr<c10::qint32>());
+  } else {
+    bias_data = nullptr;
+  }
 
   TORCH_CHECK(
       w_scale.size() == w_zp.size(),
@@ -364,7 +386,7 @@ at::Tensor PackedConvWeight<kSpatialDim>::apply_impl(
         fbgemm::ReQuantizeOutput<
             kReluFused,
             fbgemm::QuantizationGranularity::TENSOR,
-            float>
+            int32_t>
             output_proc_obj(
                 kNoOpObj,
                 output_multiplier_float.data(),
@@ -390,7 +412,7 @@ at::Tensor PackedConvWeight<kSpatialDim>::apply_impl(
         fbgemm::ReQuantizeOutput<
             kReluFused,
             fbgemm::QuantizationGranularity::OUT_CHANNEL,
-            float>
+            int32_t>
             output_proc_obj(
                 kNoOpObj,
                 output_multiplier_float.data(),
