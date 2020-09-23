@@ -62,10 +62,11 @@ PThreadPool* pthreadpool() {
 }
 
 pthreadpool_t pthreadpool_() {
-  PThreadPool* const threadpool = pthreadpool();
-  TORCH_INTERNAL_ASSERT(
-      threadpool, "Failed to acquire an instance of PThreadPool!");
-  return threadpool->threadpool_.get();
+  return nullptr;
+  // PThreadPool* const threadpool = pthreadpool();
+  // TORCH_INTERNAL_ASSERT(
+  //     threadpool, "Failed to acquire an instance of PThreadPool!");
+  // return threadpool->threadpool_.get();
 }
 
 } // namespace caffe2
